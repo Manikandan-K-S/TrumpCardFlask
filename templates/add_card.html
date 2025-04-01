@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Card</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container mt-4">
+        <h2>Add New Card</h2>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="alert alert-{{ messages[0][0] }}">
+                    {{ messages[0][1] }}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="name">Player Name</label>
+                <input type="text" id="name" name="name" class="form-control" placeholder="Enter player name" required>
+            </div>
+
+            <div class="form-group">
+                <label for="power">Power</label>
+                <input type="number" id="power" name="power" class="form-control" placeholder="Enter power value" required>
+            </div>
+
+            <div class="form-group">
+                <label for="strike_rate">Strike Rate</label>
+                <input type="number" step="0.1" id="strike_rate" name="strike_rate" class="form-control" placeholder="Enter strike rate" required>
+            </div>
+
+            <div class="form-group">
+                <label for="wickets">Wickets</label>
+                <input type="number" id="wickets" name="wickets" class="form-control" placeholder="Enter number of wickets" required>
+            </div>
+
+            <div class="form-group">
+                <label for="matches_played">Matches Played</label>
+                <input type="number" id="matches_played" name="matches_played" class="form-control" placeholder="Enter number of matches played" required>
+            </div>
+
+            <div class="form-group">
+                <label for="runs_scored">Runs Scored</label>
+                <input type="number" id="runs_scored" name="runs_scored" class="form-control" placeholder="Enter total runs scored" required>
+            </div>
+
+            <div class="form-group">
+                <label for="highest_score">Highest Score</label>
+                <input type="number" id="highest_score" name="highest_score" class="form-control" placeholder="Enter highest score" required>
+            </div>
+
+            <div class="form-group">
+                <label for="img">Upload Image</label>
+                <input type="file" id="img" name="img" class="form-control">
+                <small class="form-text text-muted">Allowed file types: png, jpg, jpeg, gif.</small>
+            </div>
+
+            <button type="submit" class="btn btn-success btn-block">Add Card</button>
+        </form>
+
+        <hr>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-primary">Back to Dashboard</a>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>

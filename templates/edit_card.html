@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Card</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container mt-4">
+        <h2>Edit Card</h2>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="alert alert-{{ messages[0][0] }}">
+                    {{ messages[0][1] }}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="player_name">Player Name</label>
+                <input type="text" id="player_name" name="player_name" class="form-control" value="{{ card.player_name }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="power">Power</label>
+                <input type="number" id="power" name="power" class="form-control" value="{{ card.power }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="strike_rate">Strike Rate</label>
+                <input type="number" step="0.1" id="strike_rate" name="strike_rate" class="form-control" value="{{ card.strike_rate }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="wickets">Wickets</label>
+                <input type="number" id="wickets" name="wickets" class="form-control" value="{{ card.wickets }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="matches_played">Matches Played</label>
+                <input type="number" id="matches_played" name="matches_played" class="form-control" value="{{ card.matches_played }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="runs_scored">Runs Scored</label>
+                <input type="number" id="runs_scored" name="runs_scored" class="form-control" value="{{ card.runs_scored }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="highest_score">Highest Score</label>
+                <input type="number" id="highest_score" name="highest_score" class="form-control" value="{{ card.highest_score }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="img">Upload New Image</label>
+                <input type="file" id="img" name="img" class="form-control">
+                
+                {% if card.img %}
+                    <div class="mt-2">
+                        <label>Current Image:</label>
+                        <img src="{{ url_for('static', filename=card.img) }}" alt="Current Image" class="img-thumbnail" width="150">
+                    </div>
+                {% endif %}
+            </div>
+
+            <button type="submit" class="btn btn-warning btn-block">Update Card</button>
+        </form>
+
+        <hr>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-primary">Back to Dashboard</a>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>

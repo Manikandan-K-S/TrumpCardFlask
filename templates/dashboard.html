@@ -1,0 +1,57 @@
+<!-- dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container mt-4">
+        <h2 class="mb-4">Cricket Cards Dashboard</h2>
+
+        <!-- Display Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="alert alert-{{ messages[0][0] }}">
+                    {{ messages[0][1] }}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <div class="row">
+            {% for card in cards %}
+                <div class="col-md-4">
+                    <div class="card mb-4">
+                        <img src="{{ url_for('static', filename=card.img|replace('\\', '/')) }}" class="card-img-top" alt="{{ card.player_name }}" >
+                        <div class="card-body">
+                            <h5 class="card-title">{{ card.player_name }}</h5>
+                            <p class="card-text">
+                                Power: {{ card.power }} <br>
+                                Strike Rate: {{ card.strike_rate }} <br>
+                                Wickets: {{ card.wickets }} <br>
+                                Matches Played: {{ card.matches_played }} <br>
+                                Runs Scored: {{ card.runs_scored }} <br>
+                                Highest Score: {{ card.highest_score }}
+                            </p>
+                            <a href="{{ url_for('edit_card', card_id=card.id) }}" class="btn btn-primary">Edit</a>
+                            <form action="{{ url_for('delete_card', id=card.id) }}" method="POST" style="display:inline-block;">
+                                <button type="submit" class="btn btn-danger">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <hr>
+        <a href="{{ url_for('add_card') }}" class="btn btn-success add_new" >Add New Card</a>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
