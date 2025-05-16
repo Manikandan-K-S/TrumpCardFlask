@@ -1,94 +1,133 @@
 import random
-import json
-from db import get_cricket_card_by_id, update_win_stats, add_game, get_game_by_id, update_game_result
+from db import Cricket, update_game_result
+from pprint import pprint
 
 class GamePlay:
-    def __init__(self, game_id, player1, player2, player1_cards, player2_cards):
-        """
-        Initializes the game with players and their decks.
-        :param game_id: Unique game identifier.
-        :param player1: Email of player1.
-        :param player2: Email of player2.
-        :param player1_cards: List of Cricket card IDs for player1.
-        :param player2_cards: List of Cricket card IDs for player2.
-        """
+    def __init__(self, game_id, player1_email):
         self.game_id = game_id
-        self.player1 = player1
-        self.player2 = player2
-        self.turn = player1  # Player 1 starts by default
-        self.decks = {
-            player1: player1_cards,
-            player2: player2_cards
-        }
+        self.player1 = player1_email
+        self.player2 = None
+        self.turn = player1_email
+        self.deck1 = []
+        self.deck2 = []
+        self.matched = False
+        self.active = True
+        self.starter = None
+
+        self.last_result = None
+        self.winner_of_game = None
+        # New flag to track if current turn has been processed
+        self.turn_processed = False
+
+    def join(self, player2_email):
+        """
+        When second player joins, shuffle and split cards into two decks.
+        Store cards as plain dicts to avoid DetachedInstanceError.
+        """
+        self.player2 = player2_email
+        self.matched = True
+
+        cards = Cricket.query.all()
+        # cards = cards[0:10]
+        random.shuffle(cards)
+        mid = len(cards) // 2
+
+        # Convert SQLAlchemy objects to dictionaries
+        self.deck1 = [self._card_to_dict(card) for card in cards[:mid]]
+        self.deck2 = [self._card_to_dict(card) for card in cards[mid:]]
+
+    def _card_to_dict(self, card):
+        data = card.__dict__.copy()
+        # Remove SQLAlchemy state
+        data.pop('_sa_instance_state', None)
+        return data
 
     def get_current_turn(self):
-        """Returns the player whose turn it is."""
         return self.turn
 
-    def get_top_card(self, player):
-        """Returns the top card of a player's deck."""
-        if self.decks[player]:
-            return get_cricket_card_by_id(self.decks[player][0])
+    def get_top_card(self, player_email):
+        if player_email == self.player1 and self.deck1:
+            return self.deck1[0]
+        elif player_email == self.player2 and self.deck2:
+            return self.deck2[0]
         return None
 
-    def play_turn(self, player, attribute):
-        """
-        Handles turn logic when a player selects an attribute.
-        :param player: Player's email who is playing.
-        :param attribute: Selected attribute to compare.
-        :return: Result dictionary containing turn outcome.
-        """
-        if player != self.turn:
-            return {"error": "Not your turn!"}
+   
 
-        opponent = self.player1 if player == self.player2 else self.player2
+    def play_turn(self, player_email, attribute):
+        if player_email != self.turn:
+            return  # Not this player's turn
 
-        player_card = self.get_top_card(player)
-        opponent_card = self.get_top_card(opponent)
+        card1 = self.deck1[0]
+        card2 = self.deck2[0]
 
-        if not player_card or not opponent_card:
-            return {"error": "One of the players has no cards left!"}
 
-        # Compare attribute values
-        player_value = getattr(player_card, attribute, None)
-        opponent_value = getattr(opponent_card, attribute, None)
+        
 
-        if player_value is None or opponent_value is None:
-            return {"error": "Invalid attribute selected!"}
+        val1 = card1.get(attribute)
+        val2 = card2.get(attribute)
+        if val1 is None or val2 is None:
+            return  # Invalid attribute
 
-        # Determine winner
-        if player_value > opponent_value:
-            winner = player
-            loser = opponent
-            self.decks[winner].append(self.decks[loser].pop(0))  # Transfer opponent's card
-            result = "win"
-        elif player_value < opponent_value:
-            winner = opponent
-            loser = player
-            self.decks[winner].append(self.decks[player].pop(0))  # Transfer player's card
-            result = "lose"
+        # Determine outcome
+        if val1 > val2:
+            winner_email = self.player1
+            loser_email = self.player2
+            winner_card = card1
+            loser_card = card2
         else:
-            result = "draw"
-            winner = None
-            loser = None
+            winner_email = self.player2
+            loser_email = self.player1
+            winner_card = card2
+            loser_card = card1
 
-        # Store win statistics if there's a winner
-        if winner:
-            update_win_stats(self.decks[winner][0], attribute)
+        
 
-        # Check game over condition
-        if not self.decks[loser]:
-            update_game_result(self.game_id, winner, loser)
-            return {"game_over": True, "winner": winner, "loser": loser}
 
-        # Switch turn
-        self.turn = opponent
+        if winner_email == self.player1:
+            self.deck1.append(self.deck1.pop(0))
+            self.deck1.append(self.deck2.pop(0))
+            self.turn = self.player1
+        else:
+            self.deck2.append(self.deck2.pop(0))
+            self.deck2.append(self.deck1.pop(0))
+            self.turn = self.player2
 
-        return {
-            "result": result,
-            "winner": winner,
-            "loser": loser,
-            "next_turn": self.turn,
-            "player_card": player_card,
-            "opponent_card": opponent_card
+
+
+        
+        # Toggle the turn between the two players
+        # self.turn = self.player1 if self.turn == self.player2 else self.player2
+
+        game_ended = False
+        final_winner = None
+        if not self.deck1:
+            game_ended = True
+            final_winner = self.player2
+            self.active = False
+            self.winner_of_game = final_winner
+            update_game_result(self.game_id, final_winner, self.player1)
+        elif not self.deck2:
+            game_ended = True
+            final_winner = self.player1
+            self.active = False
+            self.winner_of_game = final_winner
+            update_game_result(self.game_id, final_winner, self.player2)    
+
+        # Store opponent card relative to the *current turn owner* (i.e. the player who played)
+        opponent_card = card2 if player_email == self.player1 else card1
+
+        self.last_result = {
+            'winner': winner_email,
+            'attribute': attribute,
+            'won_card': winner_card,
+            'lost_card': loser_card,
+            'gameOver': game_ended,
+            'overallWinner': final_winner if game_ended else None,
+            'next_turn': self.turn
         }
+
+        self.turn_processed = True
+
+    def __str__(self):
+        return f"Game ID: {self.game_id}, Player 1: {self.player1}, Player 2: {self.player2}, Turn: {self.turn}, Matched: {self.matched}"

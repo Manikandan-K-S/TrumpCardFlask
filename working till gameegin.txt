@@ -1,0 +1,184 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import random
+from db import (
+    db, get_player_by_email, create_player, authenticate_player,
+    add_game, update_game_result, get_game_by_id, Cricket
+)
+from gameplay import GamePlay
+
+app = Flask(__name__)
+CORS(app)
+
+# ---- Config ----
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:admin@localhost:5433/TrumpCards'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db.init_app(app)
+
+# ---- In-memory state ----
+onGoing = {}   # game_id -> GamePlay instance
+waiting = None # holds (game_id, email) tuple for the waiting game
+
+# -------- Register/Login --------
+
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+
+    email = data.get('email')
+    name = data.get('name')
+    password = data.get('pwd')
+
+    if not email or not name or not password:
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    if get_player_by_email(email):
+        return jsonify({'error': 'Email already registered'}), 409
+
+    create_player(email, name, password)
+    return jsonify({'message': 'Registration successful'}), 201
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json() or {}
+    player = authenticate_player(data.get('email'), data.get('password'))
+    if player:
+        return jsonify({'message': 'Login successful', 'email': player.email, 'name': player.name}), 200
+    return jsonify({'message': 'Invalid credentials'}), 401
+
+# -------- Matchmaking --------
+
+@app.route('/start_game', methods=['POST'])
+def start_game():
+    global waiting
+    data = request.get_json() or {}
+    print(waiting)
+    email = data.get('email')
+    if not email:
+        return jsonify({'message': 'Email required'}), 400
+
+    # Check if player is already waiting
+    if waiting and waiting[1] == email:
+        gp = onGoing.get(waiting[0])
+        if gp and not gp.matched:
+            return jsonify({'game_id': waiting[0], 'message': 'waiting'}), 202
+
+    # No one is waiting - create game and wait
+    if waiting is None:
+        g = add_game(email)
+        waiting = (g.id, email)
+        print(f"Waiting for player: {g.id}, {email}")
+        gp = GamePlay(g.id, email)
+        onGoing[str(g.id)] = gp
+        return jsonify({'game_id': g.id, 'message': 'waiting'}), 202
+
+    # Match with the waiting player
+    game_id, opponent_email = waiting
+    waiting = None
+
+    gp = onGoing.get(str(game_id))
+    gp.player2 = email
+    db.session.commit()
+    
+    print(f"Game ID: {game_id}, Player 1: {gp.player1}, Player 2: {gp.player2}")
+    gp.matched = True
+    gp.join(email)  # Join the game
+    waiting = None
+    print(f"Game ID: {game_id}, Player 1: {gp.player1}, Player 2: {gp.player2}")
+    print({'game_id': game_id, 'opponent': opponent_email, 'message': 'matched'})
+    
+    # Send response with game info
+    return jsonify({'game_id': game_id, 'opponent': opponent_email, 'message': 'matched'}), 200
+
+@app.route('/check_match', methods=['POST'])
+def check_match():
+    global waiting
+    print(waiting)
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Missing or invalid JSON"}), 400
+    
+    game_id = data.get('game_id')  # Now using game_id to check the match
+
+
+    if not game_id:
+        return jsonify({'message': 'Game ID is required'}), 400
+
+    # Check if the game exists in the ongoing games dictionary
+    gp = onGoing.get(game_id)
+
+    if not gp:
+        print(onGoing)
+        print([type(i) for i in onGoing])
+        print("game not found")
+        return jsonify({'message': 'Game not found'}), 404
+
+    # Check if the game has been matched
+    if gp.matched:
+        # Find the opponent
+        
+        print(f"Match found: {gp.player1} vs {gp.player2}")
+        waiting = None
+        print({'game_id': game_id, 'message': 'matched'})
+        return jsonify({'game_id': game_id,  'message': 'matched'}), 200
+    
+    # If the game is still waiting for a match
+
+    return jsonify({'message': 'waiting'}), 202
+
+
+# -------- Gameplay --------
+
+@app.route('/play_turn', methods=['POST'])
+def play_turn():
+    data = request.get_json() or {}
+    gid, email, attr = data.get('game_id'), data.get('email'), data.get('attribute')
+    gp = onGoing.get(gid)
+    if not gp:
+        return jsonify({'message': 'Game not found'}), 404
+
+    res = gp.play_turn(email, attr)
+    if res.get('game_over'):
+        update_game_result(gid, res.get('winner'), None)
+        del onGoing[gid]
+    return jsonify(res), 200
+
+@app.route('/get_game_state', methods=['POST'])
+def get_game_state():
+    data = request.get_json() or {}
+    gid, email = data.get('game_id'), data.get('email')
+    gp = onGoing.get(gid)
+    print(gp)
+    if not gp:
+        return jsonify({'message': 'Game not found'}), 404
+    return jsonify({
+        'turn': gp.get_current_turn(),
+        'your_card': gp.get_top_card(email),
+        'opp_card': gp.get_top_card(gp.player1 if email == gp.player2 else gp.player2)
+    }), 200
+
+
+@app.route('/decide_starter', methods=['POST'])
+def decide_starter():
+    data = request.get_json() or {}
+    game_id = data.get('game_id')
+
+    # Get from in-memory game state
+    gp = onGoing.get(game_id)
+
+    if not gp:
+        return jsonify({"message": "Invalid game ID"}), 404
+
+    if gp.starter is None:
+        # Randomly choose a starter
+        gp.starter = random.choice([gp.player1, gp.player2])
+
+    return jsonify({'starter': gp.starter}), 200
+
+
+# -------- Main --------
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True, host='0.0.0.0', port=5000)

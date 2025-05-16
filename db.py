@@ -1,7 +1,6 @@
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
-import json
 
 db = SQLAlchemy()
 
@@ -38,8 +37,7 @@ class Cricket(db.Model):
     matches_played = db.Column(db.Integer, default=0)
     runs_scored = db.Column(db.Integer, default=0)
     highest_score = db.Column(db.Integer, default=0)
-    img = db.Column(db.Text)  
-    win_stats = db.Column(db.JSON, default={})  # Stores attribute win counts
+    img = db.Column(db.Text)
 
 # ---------------- Player Functions ----------------
 
@@ -62,18 +60,15 @@ def authenticate_player(email, pwd):
 # ---------------- Game Functions ----------------
 
 def add_game(player1_email, player2_email=None):
-    """Create a new game entry in the database."""
     game = Game(player1=player1_email, player2=player2_email)
     db.session.add(game)
     db.session.commit()
     return game
 
 def get_game_by_id(game_id):
-    """Retrieve a game by ID."""
     return Game.query.get(game_id)
 
 def update_game_result(game_id, winner_email, loser_email):
-    """Update the game with winner and loser details."""
     game = Game.query.get(game_id)
     if game:
         game.winner = winner_email
@@ -105,11 +100,9 @@ def add_cricket_card(player_name, power, strike_rate, wickets=0, matches_played=
     return card
 
 def update_cricket_card(card_id, **kwargs):
-    """Update cricket card attributes."""
     card = Cricket.query.get(card_id)
     if not card:
         return None
-
     for key, value in kwargs.items():
         if hasattr(card, key):
             setattr(card, key, value)
@@ -117,7 +110,6 @@ def update_cricket_card(card_id, **kwargs):
     return card
 
 def delete_cricket_card(card_id):
-    """Delete a cricket card from the database."""
     card = Cricket.query.get(card_id)
     if card:
         db.session.delete(card)
@@ -125,17 +117,40 @@ def delete_cricket_card(card_id):
         return True
     return False
 
-# ---------------- Win Stats Functions ----------------
 
-def update_win_stats(card_id, attribute):
-    """Increment the win count of a given attribute for a card."""
-    card = Cricket.query.get(card_id)
-    if not card:
-        return None
-    
-    win_stats = card.win_stats or {}  # Ensure it's a dictionary
-    win_stats[attribute] = win_stats.get(attribute, 0) + 1
-    card.win_stats = win_stats
+def get_player_match_history(email):
+    # Fetch games where the player is either player1 or player2
+    games = Game.query.filter(
+        (Game.player1 == email) | (Game.player2 == email)
+    ).order_by(Game.timestamp.desc()).all()
 
-    db.session.commit()
-    return card
+    history = []
+    for game in games:
+        if game.player1 == email:
+            opponent_email = game.player2
+        else:
+            opponent_email = game.player1
+
+        # Fetch opponent name if email is present
+        opponent_name = None
+        if opponent_email:
+            opponent = Player.query.filter_by(email=opponent_email).first()
+            opponent_name = opponent.name if opponent else "Unknown"
+
+        # Determine result
+        if game.winner == email:
+            result = "Win"
+        elif game.loser == email:
+            result = "Lose"
+        else:
+            result = "Draw"
+
+        history.append({
+            "game_id": game.id,
+            "opponent": opponent_name,
+            "result": result,
+            "timestamp": game.timestamp
+        })
+
+    print("Match history for player {}: {}".format(email, history))
+    return history

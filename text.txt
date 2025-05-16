@@ -1,0 +1,169 @@
+from flask import Flask, request, jsonify
+from db import db, get_player_by_email, add_game, get_game_by_id, Cricket
+from werkzeug.security import generate_password_hash, check_password_hash
+import random
+from collections import deque
+
+# Flask app setup
+app = Flask(__name__)
+onGoing = {}  # game_id -> GamePlay instance
+waiting = None  # temporarily store unmatched player
+
+# ---------------- GamePlay Class ----------------
+class GamePlay:
+    def __init__(self, game_id, player1, player2, starter):
+        self.game_id = game_id
+        self.player1 = player1
+        self.player2 = player2
+        self.starter = starter
+        self.turn = starter
+        self.deck1 = deque()
+        self.deck2 = deque()
+
+    def start_game(self):
+        cards = get_all_cricket_cards()
+        random.shuffle(cards)
+        mid = len(cards) // 2
+        self.deck1 = deque(cards[:mid])
+        self.deck2 = deque(cards[mid:])
+
+    def play_turn(self, attribute):
+        """Handles a single turn of the game."""
+        if self.turn == self.player1:
+            player_deck = self.deck1
+            opponent_deck = self.deck2
+        else:
+            player_deck = self.deck2
+            opponent_deck = self.deck1
+
+        # Draw the top card for both players
+        player_card = player_deck.popleft()
+        opponent_card = opponent_deck.popleft()
+
+        # Compare the chosen attribute
+        player_attr = getattr(player_card, attribute)
+        opponent_attr = getattr(opponent_card, attribute)
+
+        if player_attr > opponent_attr:
+            winner, loser = self.turn, self.player1 if self.turn == self.player2 else self.player2
+            player_deck.append(player_card)
+            opponent_deck.append(opponent_card)
+            return winner, loser
+        else:
+            winner, loser = self.player1 if self.turn == self.player2 else self.player2, self.turn
+            player_deck.append(opponent_card)
+            opponent_deck.append(player_card)
+            return winner, loser
+
+    def switch_turn(self):
+        """Switch the active player."""
+        self.turn = self.player2 if self.turn == self.player1 else self.player1
+
+
+# ---------------- Routes ----------------
+
+@app.route("/startGame", methods=["POST"])
+def start_game():
+    global waiting, onGoing
+
+    data = request.get_json()
+    email = data.get("email")
+
+    if not email or not get_player_by_email(email):
+        return jsonify({"error": "Invalid player"}), 400
+
+    # Case 1: someone is waiting, match them
+    if waiting and waiting != email:
+        game = get_game_by_id(waiting["game_id"])
+        if game and game.player2 is None:
+            game.player2 = email
+            db.session.commit()
+
+            # Randomly decide who starts
+            starter = random.choice([waiting["email"], email])
+            game_instance = GamePlay(game.id, waiting["email"], email, starter)
+            onGoing[game.id] = game_instance
+            game_instance.start_game()
+
+            matched_game_id = game.id
+            waiting = None
+
+            return jsonify({"gameId": matched_game_id})
+
+    # Case 2: no one waiting, create new game and wait
+    game = add_game(email)
+    waiting = {"email": email, "game_id": game.id}
+    return jsonify({"gameId": game.id})
+
+
+@app.route("/checkOpponent", methods=["POST"])
+def check_opponent():
+    data = request.get_json()
+    game_id = data.get("gameId")
+
+    game = get_game_by_id(game_id)
+    if not game:
+        return jsonify({"found": False}), 404
+
+    if game.player2:
+        gp = onGoing.get(game.id)
+        if gp:
+            return jsonify({
+                "found": True,
+                "starts": gp.starter
+            })
+    return jsonify({"found": False})
+
+
+@app.route("/playTurn", methods=["POST"])
+def play_turn():
+    data = request.get_json()
+    game_id = data.get("gameId")
+    attribute = data.get("attribute")  # e.g., "power", "strike_rate"
+
+    if not game_id or not attribute:
+        return jsonify({"error": "Game ID and attribute required"}), 400
+
+    game = onGoing.get(game_id)
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
+
+    # Check if it's the player's turn
+    email = data.get("email")
+    if email != game.turn:
+        return jsonify({"error": "It's not your turn"}), 403
+
+    # Play the turn and determine the winner and loser
+    winner, loser = game.play_turn(attribute)
+
+    # Switch the turn
+    game.switch_turn()
+
+    return jsonify({
+        "winner": winner,
+        "loser": loser,
+        "player1_deck": len(game.deck1),
+        "player2_deck": len(game.deck2),
+        "turn": game.turn
+    })
+
+
+@app.route("/getGameState", methods=["GET"])
+def get_game_state():
+    game_id = request.args.get("gameId")
+
+    game = onGoing.get(game_id)
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
+
+    return jsonify({
+        "player1": game.player1,
+        "player2": game.player2,
+        "turn": game.turn,
+        "player1_deck": len(game.deck1),
+        "player2_deck": len(game.deck2)
+    })
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
